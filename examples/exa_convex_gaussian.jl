@@ -18,7 +18,6 @@ const dim_x = 20
 sample_constraints(N) = [randn(dim_x) for _ = 1:N]
 function solve_problem(con_list)
     model = solver()
-    set_silent(model)
     x = @variable(model, [1:dim_x], lower_bound=-100, upper_bound=100)
     for v in con_list
         @constraint(model, dot(v, x) ≤ 1)
@@ -112,7 +111,16 @@ plt6 = plot(risk_list, cdf_list, label=false)
 hline!(plt6, [β])
 vline!(plt6, [ϵ_max])
 
-plt = plot(plt1, plt2, plt3, plt4, plt5, plt6, layout=6)
+θ_max = minimum(size_list) * 1.0
+θ_min = 1.0
+θ_range = range(θ_min, θ_max, 100)
+llh_range = map(θ -> loglikelihood(samples, θ), θ_range)
+θ_init = OnlineScenarioOptimization._initial_guess(samples)
+plt7 = plot(θ_range, llh_range)
+vline!(plt7, [θ_init])
+vline!(plt7, [θ_list[end]])
+
+plt = plot(plt1, plt2, plt3, plt4, plt5, plt6, plt7, layout=7)
 display(plt)
 
 end # module

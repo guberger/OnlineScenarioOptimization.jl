@@ -1,6 +1,6 @@
 module OnlineScenarioOptimization
 
-export greet, RiskSample, fit_parameter, find_size
+export greet, RiskSample, fit_parameter, find_size, loglikelihood
 
 greet() = "Hello World!"
 
@@ -14,18 +14,26 @@ struct RiskSample
     w::Float64
 end
 
+_L(N, ϵ, θ) = (θ - 1) * log(ϵ) + (N - θ) * log(1 - ϵ) - logbeta(θ, N - θ + 1)
+_LL(sample, θ) = _L(sample.N, sample.ϵ, θ) * sample.w
+_risk(sample) = log(0 + sample.ϵ) * sample.w
+_safe(sample) = log(1 - sample.ϵ) * sample.w
+_D1(sample, θ) = digamma(θ) * sample.w
+_D2(sample, θ) = digamma(sample.N - θ + 1) * sample.w
+_H1(sample, θ) = trigamma(θ) * sample.w
+_H2(sample, θ) = trigamma(sample.N - θ + 1) * sample.w
+
+function Distributions.loglikelihood(samples, θ)
+    w_tot = sum(sample -> sample.w, samples)
+    ll = sum(sample -> _LL(sample, θ), samples)
+    return ll / w_tot
+end
+
 function _initial_guess(samples)
     num = sum(sample -> sample.ϵ * sample.w, samples)
     den = sum(sample -> sample.w / (sample.N + 1), samples)
     return num / den
 end
-
-_risk(sample) = log(0 + sample.ϵ) * (sample.w)
-_safe(sample) = log(1 - sample.ϵ) * (sample.w)
-_D1(sample, θ) = digamma(θ) * sample.w
-_D2(sample, θ) = digamma(sample.N - θ + 1) * sample.w
-_H1(sample, θ) = trigamma(θ) * sample.w
-_H2(sample, θ) = trigamma(sample.N - θ + 1) * sample.w
 
 function fit_parameter(samples; maxiter::Int=1000, tol::Float64=1e-14)
     θ = _initial_guess(samples)

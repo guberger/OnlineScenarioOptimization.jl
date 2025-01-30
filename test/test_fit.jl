@@ -28,6 +28,13 @@ end
     @test abs(θ_hat - 21.390) < 1e-3
 end
 
+samples = [RiskSample(3, 0.5, 2.0), RiskSample(2, 0.5, 1.0)]
+
+@testset "Log likelihood" begin
+    ll = loglikelihood(samples, 2.0)
+    @test abs(ll - 2 * log(3 / 2) / 3) < 1e-5
+end
+
 N = 100
 θ = 20
 n_sample = 100

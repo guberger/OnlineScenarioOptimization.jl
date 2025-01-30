@@ -1,32 +1,83 @@
 module ExamplePathlanning
 
 using Distributions
+using Gurobi
+using JuMP
 using OnlineScenarioOptimization
 using Plots
 using Random
 
-const dim_x = 400
-const N_valid = 10000
-sample_constraints(N) = [randn(dim_x) .+ (rand() < 0.01) * randn() * 2 for _ = 1:N]
+const GUROBI_ENV = Gurobi.Env()
+solver() = Model(optimizer_with_attributes(
+    () -> Gurobi.Optimizer(GUROBI_ENV), "OutputFlag"=>false
+))
+
+const D_con = Normal(1.5, 0.1)
+const H = 100
+const _M_ = 100
+const Dy = 0.3
+const Dx = 0.045
+
+sample_constraints(N) = [rand(D_con) for _ = 1:N]
 function solve_problem(con_list)
-    x = fill(-100.0, dim_x)
-    for p in con_list
-        for i in eachindex(x)
-            x[i] = max(x[i], p[i])
+    δ = 0.01
+    model = solver()
+    x_list = [@variable(model, [1:2]) for _ = 1:(H + 1)]
+    for x in x_list
+        @constraint(model, x ≥ [0, 0])
+        @constraint(model, x ≤ [5, 3])
+    end
+    @constraint(model, x_list[1] == [0.5, 0.5])
+    for x in x_list
+        b1 = @variable(model, binary=true)
+        b2 = @variable(model, binary=true)
+        b3 = @variable(model, binary=true)
+        @constraint(model, b1 + b2 + b3 ≥ 1)
+        @constraint(model, x[1] ≤ 2 - δ + _M_ * (1 - b1))
+        @constraint(model, x[1] ≥ 3 + δ - _M_ * (1 - b2))
+        for y in con_list
+            @constraint(model, x[2] ≥ y - Dy - _M_ * (1 - b3))
+            @constraint(model, x[2] ≤ y + Dy + _M_ * (1 - b3))
         end
     end
-    return x
+    for i = 1:H
+        @constraint(model, [Dx; x_list[i] - x_list[i + 1]] in SecondOrderCone())
+    end
+    for i = 2:H
+        a = x_list[i + 1] + x_list[i - 1] - 2 * x_list[i]
+        @constraint(model, [0.001; a] in SecondOrderCone())
+    end
+    e = @variable(model, lower_bound=0)
+    xT = [4.5, 0.5]
+    @constraint(model, x_list[H + 1] - xT ≤ +e * ones(2))
+    @constraint(model, x_list[H + 1] - xT ≥ -e * ones(2))
+    @objective(model, Min, sum(e))
+    optimize!(model)
+    @assert primal_status(model) == FEASIBLE_POINT
+    return map(x -> value.(x), x_list)
 end
-function compute_risk(x)
-    n_fail::Int = 0
-    con_list = sample_constraints(N_valid)
-    for p in con_list
-        if any(x .< p)
-            n_fail += 1
+function compute_risk(x_list)
+    y_min = +Inf
+    y_max = -Inf
+    for x in x_list
+        if 2 ≤ x[1] ≤ 3
+            y_min = min(x[2], y_min)
+            y_max = max(x[2], y_max)
         end
     end
-    return n_fail / N_valid
+    display(y_min)
+    display(y_max)
+    return min(0.0, cdf(D_con, y_max - Dy) - cdf(D_con, y_min + Dy)) + 1.0
 end
+
+con_list = sample_constraints(50)
+display(con_list)
+x_opt = solve_problem(con_list)
+ϵ = compute_risk(x_opt)
+display(ϵ)
+
+plt = plot(getindex.(x_opt, 1), getindex.(x_opt, 2), marker=:diamond)
+display(plt)
 
 ################################################################################
 function generate_risk_samples(N_set, n_sample)
@@ -40,9 +91,9 @@ function generate_risk_samples(N_set, n_sample)
     end
     return samples
 end
-
-N = 1000
-n_sample = 100
+@assert false
+N = 100
+n_sample = 10
 samples = generate_risk_samples((N,), n_sample)
 
 risk_list = [sample.ϵ for sample in samples]
