@@ -1,12 +1,15 @@
 module ExampleGarattiFig8
 
 using Distributions
+using LaTeXStrings
 using OnlineScenarioOptimization
 using Plots
 using Random
+pythonplot()
 
 const dim_x = 400
 const N_valid = 10000
+
 sample_constraints(N) = [randn(dim_x) .+ rand() * 5 for _ = 1:N]
 function solve_problem(con_list)
     x = fill(-100.0, dim_x)
@@ -29,52 +32,10 @@ function compute_risk(x)
 end
 
 ################################################################################
-function generate_risk_samples(N_set, n_sample)
-    samples = Vector{RiskSample}(undef, n_sample)
-    for k = 1:n_sample
-        N = rand(N_set)
-        con_list = sample_constraints(N)
-        x_opt = solve_problem(con_list)
-        ϵ = compute_risk(x_opt)
-        samples[k] = RiskSample(N, ϵ, ϵ^2)
-    end
-    return samples
-end
-
-N = 1000
-n_sample = 100
-samples = generate_risk_samples((N,), n_sample)
-
-risk_list = [sample.ϵ for sample in samples]
-θ, success = fit_parameter(samples)
-@assert success
-display(θ)
-D_hat = Beta(θ, N - θ + 1)
-display(D_hat)
-D_Beta = fit_mle(Beta, risk_list)
-display(D_Beta)
-
-xs = range(0, 1, length=1000)
-plt1 = histogram(risk_list, normalize=:pdf, label=false)
-plot!(plt1, xs, pdf.(D_hat, xs), c=:red, label=false)
-plot!(plt1, xs, pdf.(D_Beta, xs), c=:green, label=false)
-
-N_set = 512:1023
-n_sample = 100
-samples = generate_risk_samples(N_set, n_sample)
-
-size_list = [sample.N for sample in samples]
-risk_list = [sample.ϵ for sample in samples]
-θ, success = fit_parameter(samples)
-@assert success
-display(θ)
-
-plt2 = scatter(size_list, risk_list, label=false)
-
-################################################################################
 ϵ_max = 0.1
 β = 0.9
-size_list = [1000]
+N0 = 1000
+size_list = [N0]
 risk_list = Float64[]
 samples = RiskSample[]
 n_step = 1000
@@ -85,7 +46,7 @@ for t = 1:n_step
     x_opt = solve_problem(con_list)
     ϵ = compute_risk(x_opt)
     push!(risk_list, ϵ)
-    push!(samples, RiskSample(size_list[t], ϵ, t * ϵ^2))
+    push!(samples, RiskSample(size_list[t], ϵ, t))
     θ, success = fit_parameter(samples)
     @assert success
     push!(θ_list, θ)
@@ -96,25 +57,19 @@ for t = 1:n_step
     end
 end
 
-plt3 = plot(size_list, label=false)
-plt4 = plot(risk_list, label=false)
-plt5 = plot(θ_list, label=false)
+plt1 = plot(size_list, xlabel=L"t", ylabel=L"N_t", label=false)
+plt2 = plot(θ_list, xlabel=L"t", ylabel=L"\theta_t", label=false)
 sort!(risk_list)
 cdf_list = collect(1:length(risk_list)) / length(risk_list)
-plt6 = plot(risk_list, cdf_list, label=false)
-hline!(plt6, [β])
-vline!(plt6, [ϵ_max])
+plt3 = plot(risk_list, cdf_list,
+            xlabel=L"V(x_t)", ylabel="frequency",
+            legend=:bottomright, label=false)
+hline!(plt3, [β], label=L"\beta")
+vline!(plt3, [ϵ_max], label=L"\epsilon")
 
-θ_max = minimum(size_list) * 1.0
-θ_min = 1.0
-θ_range = range(θ_min, θ_max, 100)
-llh_range = map(θ -> loglikelihood(samples, θ), θ_range)
-θ_init = OnlineScenarioOptimization._initial_guess(samples)
-plt7 = plot(θ_range, llh_range)
-vline!(plt7, [θ_init])
-vline!(plt7, [θ_list[end]])
-
-plt = plot(plt1, plt2, plt3, plt4, plt5, plt6, plt7, layout=7)
+plt = plot(plt1, plt2, plt3, size=(900,250), layout=(1, 3))
+plot!(plt, labelfontsize=18, tickfontsize=12, dpi=600)
+savefig(plt, "examples/figures/garatti_fig8.png")
 display(plt)
 
 end # module
