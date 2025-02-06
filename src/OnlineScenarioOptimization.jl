@@ -1,6 +1,14 @@
 module OnlineScenarioOptimization
 
-export greet, RiskSample, fit_parameter, find_size, loglikelihood
+export greet,
+    RiskSample,
+    fit_parameter,
+    loglikelihood,
+    compute_risk_excess,
+    cdf_risk,
+    find_size,
+    quantile_risk,
+    compute_risk_excess
 
 greet() = "Hello World!"
 
@@ -57,24 +65,24 @@ function fit_parameter(samples; maxiter::Int=1000, tol::Float64=1e-14)
     return θ, false
 end
 
-_proba_risk_low(θ, ϵ_max, N) = cdf(Beta(θ, N - θ + 1), ϵ_max)
+cdf_risk(θ, ϵ, N) = cdf(Beta(θ, N - θ + 1), ϵ)
 
 function find_size(θ, β, ϵ_max, N_min::Int, N_max::Int)
     N_min = max(N_min, ceil(Int, θ + 1))
     if N_min > N_max
         return N_max, false
     end
-    conf_min = _proba_risk_low(θ, ϵ_max, N_min)
+    conf_min = cdf_risk(θ, ϵ_max, N_min)
     if conf_min ≥ β
         return N_min, true
     end
-    conf_max = _proba_risk_low(θ, ϵ_max, N_max)
+    conf_max = cdf_risk(θ, ϵ_max, N_max)
     if conf_max < β
         return N_max, false
     end
     while N_min < N_max - 1
         N_mid = (N_max + N_min) / 2
-        conf = _proba_risk_low(θ, ϵ_max, N_mid)
+        conf = cdf_risk(θ, ϵ_max, N_mid)
         if conf < β
             N_min = floor(Int, N_mid + 0.1)
         else
@@ -82,6 +90,20 @@ function find_size(θ, β, ϵ_max, N_min::Int, N_max::Int)
         end
     end
     return N_max, true
+end
+
+quantile_risk(θ, β, N) = quantile(Beta(θ, N - θ + 1), β)
+
+function compute_risk_excess(samples, θ, β)
+    w_tot = sum(sample -> sample.w, samples)
+    excess = 0.0
+    for sample in samples
+        ϵ_th = quantile_risk(θ, β, sample.N)
+        if sample.ϵ > ϵ_th
+            excess += sample.w
+        end
+    end
+    return excess / w_tot
 end
 
 end # module
