@@ -23,5 +23,5 @@ docs/site/
 # environment.
 Manifest.toml
 
-*/figures/
+examples/figures/*
 .CondaPkg
